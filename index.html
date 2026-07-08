@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบสุ่มชื่อ - โรงเรียนบ้านหนองฮาง สพป.สกลนคร เขต3</title>
+    <!-- โหลด Supabase Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Sarabun', sans-serif; background-color: #f4f7f6; color: #333; text-align: center; padding: 20px; }
@@ -11,12 +12,13 @@
         h1 { color: #2c3e50; font-size: 24px; }
         .result-box { font-size: 32px; font-weight: bold; color: #e74c3c; margin: 30px 0; min-height: 50px; padding: 20px; border: 2px dashed #bdc3c7; border-radius: 10px; }
         select, input, button { padding: 10px; margin: 5px 0; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
-        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
         button:hover { background-color: #2980b9; }
         .toggle-group { display: flex; align-items: center; justify-content: center; margin: 15px 0; font-size: 16px;}
-        .toggle-group input { width: auto; margin-right: 10px; width: 20px; height: 20px; }
+        .toggle-group input { width: auto; margin-right: 10px; width: 20px; height: 20px; cursor: pointer; }
         hr { margin: 30px 0; border: 0; border-top: 1px solid #eee; }
-        .admin-section { background: #f9f9f9; padding: 15px; border-radius: 5px; text-align: left; }
+        .admin-section { background: #f9f9f9; padding: 20px; border-radius: 5px; text-align: left; }
+        .admin-section h3 { margin-top: 0; color: #2c3e50; }
     </style>
 </head>
 <body>
@@ -43,8 +45,8 @@
     </div>
 
     <button onclick="drawName()" style="font-size: 20px; padding: 15px; background-color: #27ae60;">🎲 สุ่มชื่อ</button>
-    <div class="result-box" id="resultDisplay">รอกดสุ่ม...</div>
-    <p>รายชื่อที่เหลือในโถสุ่ม: <span id="poolCount">0</span> คน</p>
+    <div class="result-box" id="resultDisplay">กำลังโหลดข้อมูล...</div>
+    <p>รายชื่อที่พร้อมสุ่ม: <span id="poolCount" style="font-weight: bold; color: #2980b9;">0</span> คน</p>
 
     <hr>
 
@@ -74,28 +76,30 @@
 </div>
 
 <script>
-    // 🔴 นำ URL และ ANON KEY จาก Supabase มาใส่ตรงนี้
-    const SUPABASE_URL = 'https://YOUR-PROJECT-ID.supabase.co';
-    const SUPABASE_KEY = 'YOUR-ANON-KEY';
+    // 🔴 ข้อมูลการเชื่อมต่อที่อัปเดตแล้ว
+    const SUPABASE_URL = 'https://hkltkwxybevzratoomkf.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbHRrd3h5YmV2enJhdG9vbWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NzMzMTUsImV4cCI6MjA5OTA0OTMxNX0.QdLxoutOQB2bCgR6kdaz65nONUz24CI9v6ITb0amMQ8';
     
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let allStudents = [];
     let currentPool = [];
 
-    // โหลดข้อมูลนักเรียนทั้งหมดจาก Supabase ตอนเปิดหน้าเว็บ
+    // ดึงข้อมูลนักเรียนทั้งหมดจาก Supabase
     async function fetchStudents() {
         const { data, error } = await supabase.from('students').select('*');
         if (error) {
             console.error('Error fetching data:', error);
-            alert('ไม่สามารถดึงข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Supabase');
+            document.getElementById('resultDisplay').innerText = "❌ เชื่อมต่อฐานข้อมูลไม่สำเร็จ";
+            alert('ไม่สามารถดึงข้อมูลได้ อย่าลืมปิด RLS ใน Table students บน Supabase นะครับ\n\nรายละเอียด Error: ' + error.message);
             return;
         }
         allStudents = data;
         updatePool();
+        document.getElementById('resultDisplay').innerText = "รอกดสุ่ม...";
     }
 
-    // อัปเดตโถสุ่มเมื่อมีการเปลี่ยนระดับชั้น
+    // อัปเดตรายชื่อในโถสุ่มตามชั้นที่เลือก
     function updatePool() {
         const selectedClass = document.getElementById('classFilter').value;
         if (selectedClass === 'all') {
@@ -112,25 +116,25 @@
         const allowDup = document.getElementById('allowDuplicate').checked;
 
         if (currentPool.length === 0) {
-            document.getElementById('resultDisplay').innerText = "❌ ไม่มีรายชื่อเหลือให้สุ่ม";
+            document.getElementById('resultDisplay').innerText = "❌ ไม่มีรายชื่อในชั้นนี้";
             return;
         }
 
-        // สุ่มตัวเลข Index
+        // สุ่มตัวเลข 
         const randomIndex = Math.floor(Math.random() * currentPool.length);
         const winner = currentPool[randomIndex];
 
         // แสดงผล
         document.getElementById('resultDisplay').innerText = `${winner.prefix}${winner.first_name} ${winner.last_name}`;
 
-        // ถ้าไม่อนุญาตให้ซ้ำ ให้ลบรายชื่อนั้นออกจากโถสุ่มชั่วคราว
+        // ถ้าไม่ให้สุ่มซ้ำ ให้เอาคนนั้นออกจากการสุ่มรอบถัดไป
         if (!allowDup) {
             currentPool.splice(randomIndex, 1);
             document.getElementById('poolCount').innerText = currentPool.length;
         }
     }
 
-    // ฟังก์ชันเพิ่มนักเรียน
+    // ฟังก์ชันเพิ่มนักเรียนใหม่
     async function addStudent() {
         const prefix = document.getElementById('newPrefix').value;
         const firstName = document.getElementById('newFirstName').value.trim();
@@ -150,14 +154,14 @@
         if (error) {
             alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
         } else {
-            alert('บันทึกข้อมูลเรียบร้อยแล้ว!');
+            alert(`บันทึกข้อมูล ${prefix}${firstName} ${lastName} เรียบร้อยแล้ว!`);
             document.getElementById('newFirstName').value = '';
             document.getElementById('newLastName').value = '';
-            fetchStudents(); // โหลดข้อมูลใหม่ทั้งหมดมาอัปเดตระบบ
+            fetchStudents(); // รีเฟรชข้อมูลใหม่
         }
     }
 
-    // เรียกใช้ฟังก์ชันโหลดข้อมูลทันทีที่เปิดหน้าเว็บ
+    // เริ่มทำงานเมื่อเปิดเว็บ
     window.onload = fetchStudents;
 </script>
 
