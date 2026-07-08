@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบสุ่มชื่อ - โรงเรียนบ้านหนองฮาง สพป.สกลนคร เขต3</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f4f7f6; color: #333; text-align: center; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; font-size: 24px; }
+        .result-box { font-size: 32px; font-weight: bold; color: #e74c3c; margin: 30px 0; min-height: 50px; padding: 20px; border: 2px dashed #bdc3c7; border-radius: 10px; }
+        select, input, button { padding: 10px; margin: 5px 0; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #2980b9; }
+        .toggle-group { display: flex; align-items: center; justify-content: center; margin: 15px 0; font-size: 16px;}
+        .toggle-group input { width: auto; margin-right: 10px; width: 20px; height: 20px; }
+        hr { margin: 30px 0; border: 0; border-top: 1px solid #eee; }
+        .admin-section { background: #f9f9f9; padding: 15px; border-radius: 5px; text-align: left; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ระบบสุ่มชื่อนักเรียน<br>โรงเรียนบ้านหนองฮาง สพป.สกลนคร เขต3</h1>
+    
+    <!-- ส่วนควบคุมการสุ่ม -->
+    <select id="classFilter" onchange="updatePool()">
+        <option value="all">รวมทุกชั้น</option>
+        <option value="อนุบาล 1">อนุบาล 1</option>
+        <option value="อนุบาล 2">อนุบาล 2</option>
+        <option value="ป.1">ชั้นประถมศึกษาปีที่ 1</option>
+        <option value="ป.2">ชั้นประถมศึกษาปีที่ 2</option>
+        <option value="ป.3">ชั้นประถมศึกษาปีที่ 3</option>
+        <option value="ป.4">ชั้นประถมศึกษาปีที่ 4</option>
+        <option value="ป.5">ชั้นประถมศึกษาปีที่ 5</option>
+        <option value="ป.6">ชั้นประถมศึกษาปีที่ 6</option>
+    </select>
+
+    <div class="toggle-group">
+        <input type="checkbox" id="allowDuplicate" checked>
+        <label for="allowDuplicate">อนุญาตให้สุ่มซ้ำได้</label>
+    </div>
+
+    <button onclick="drawName()" style="font-size: 20px; padding: 15px; background-color: #27ae60;">🎲 สุ่มชื่อ</button>
+    <div class="result-box" id="resultDisplay">รอกดสุ่ม...</div>
+    <p>รายชื่อที่เหลือในโถสุ่ม: <span id="poolCount">0</span> คน</p>
+
+    <hr>
+
+    <!-- ส่วนเพิ่มรายชื่อ -->
+    <div class="admin-section">
+        <h3>➕ เพิ่มรายชื่อนักเรียนใหม่</h3>
+        <select id="newPrefix">
+            <option value="ด.ช.">ด.ช.</option>
+            <option value="ด.ญ.">ด.ญ.</option>
+            <option value="นาย">นาย</option>
+            <option value="นางสาว">นางสาว</option>
+        </select>
+        <input type="text" id="newFirstName" placeholder="ชื่อ (ไม่ต้องใส่คำนำหน้า)">
+        <input type="text" id="newLastName" placeholder="นามสกุล">
+        <select id="newClass">
+            <option value="อนุบาล 1">อนุบาล 1</option>
+            <option value="อนุบาล 2">อนุบาล 2</option>
+            <option value="ป.1">ชั้นประถมศึกษาปีที่ 1</option>
+            <option value="ป.2">ชั้นประถมศึกษาปีที่ 2</option>
+            <option value="ป.3">ชั้นประถมศึกษาปีที่ 3</option>
+            <option value="ป.4">ชั้นประถมศึกษาปีที่ 4</option>
+            <option value="ป.5">ชั้นประถมศึกษาปีที่ 5</option>
+            <option value="ป.6">ชั้นประถมศึกษาปีที่ 6</option>
+        </select>
+        <button onclick="addStudent()">บันทึกข้อมูลลงฐานข้อมูล</button>
+    </div>
+</div>
+
+<script>
+    // 🔴 นำ URL และ ANON KEY จาก Supabase มาใส่ตรงนี้
+    const SUPABASE_URL = 'https://YOUR-PROJECT-ID.supabase.co';
+    const SUPABASE_KEY = 'YOUR-ANON-KEY';
+    
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let allStudents = [];
+    let currentPool = [];
+
+    // โหลดข้อมูลนักเรียนทั้งหมดจาก Supabase ตอนเปิดหน้าเว็บ
+    async function fetchStudents() {
+        const { data, error } = await supabase.from('students').select('*');
+        if (error) {
+            console.error('Error fetching data:', error);
+            alert('ไม่สามารถดึงข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Supabase');
+            return;
+        }
+        allStudents = data;
+        updatePool();
+    }
+
+    // อัปเดตโถสุ่มเมื่อมีการเปลี่ยนระดับชั้น
+    function updatePool() {
+        const selectedClass = document.getElementById('classFilter').value;
+        if (selectedClass === 'all') {
+            currentPool = [...allStudents];
+        } else {
+            currentPool = allStudents.filter(s => s.class_level === selectedClass);
+        }
+        document.getElementById('poolCount').innerText = currentPool.length;
+        document.getElementById('resultDisplay').innerText = "รอกดสุ่ม...";
+    }
+
+    // ฟังก์ชันสุ่มชื่อ
+    function drawName() {
+        const allowDup = document.getElementById('allowDuplicate').checked;
+
+        if (currentPool.length === 0) {
+            document.getElementById('resultDisplay').innerText = "❌ ไม่มีรายชื่อเหลือให้สุ่ม";
+            return;
+        }
+
+        // สุ่มตัวเลข Index
+        const randomIndex = Math.floor(Math.random() * currentPool.length);
+        const winner = currentPool[randomIndex];
+
+        // แสดงผล
+        document.getElementById('resultDisplay').innerText = `${winner.prefix}${winner.first_name} ${winner.last_name}`;
+
+        // ถ้าไม่อนุญาตให้ซ้ำ ให้ลบรายชื่อนั้นออกจากโถสุ่มชั่วคราว
+        if (!allowDup) {
+            currentPool.splice(randomIndex, 1);
+            document.getElementById('poolCount').innerText = currentPool.length;
+        }
+    }
+
+    // ฟังก์ชันเพิ่มนักเรียน
+    async function addStudent() {
+        const prefix = document.getElementById('newPrefix').value;
+        const firstName = document.getElementById('newFirstName').value.trim();
+        const lastName = document.getElementById('newLastName').value.trim();
+        const classLevel = document.getElementById('newClass').value;
+
+        if (!firstName || !lastName) {
+            alert('กรุณากรอกชื่อและนามสกุลให้ครบถ้วน');
+            return;
+        }
+
+        // บันทึกลง Supabase
+        const { data, error } = await supabase.from('students').insert([
+            { prefix: prefix, first_name: firstName, last_name: lastName, class_level: classLevel }
+        ]);
+
+        if (error) {
+            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+        } else {
+            alert('บันทึกข้อมูลเรียบร้อยแล้ว!');
+            document.getElementById('newFirstName').value = '';
+            document.getElementById('newLastName').value = '';
+            fetchStudents(); // โหลดข้อมูลใหม่ทั้งหมดมาอัปเดตระบบ
+        }
+    }
+
+    // เรียกใช้ฟังก์ชันโหลดข้อมูลทันทีที่เปิดหน้าเว็บ
+    window.onload = fetchStudents;
+</script>
+
+</body>
+</html>
